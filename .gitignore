@@ -23,6 +23,6 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# Lock files - COMMIT THIS to ensure consistent provider versions across team
-# .terraform.lock.hcl
-.terr   
+# Lock files (optional - some teams commit this)
+.terraform.lock.hcl
+.terraform/
