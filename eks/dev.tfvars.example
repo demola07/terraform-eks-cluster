@@ -1,0 +1,38 @@
+################################################################################
+# Configuration for OFFICIAL EKS module
+# Simplified - no need for IGW, NAT, route table names (module handles it)
+# Copy this to dev-official.tfvars to use
+################################################################################
+
+env                   = "dev"
+aws-region            = "us-east-1"
+vpc-cidr-block        = "10.16.0.0/16"
+vpc-name              = "vpc"
+pub-cidr-block        = ["10.16.0.0/20", "10.16.16.0/20", "10.16.32.0/20"]
+pub-availability-zone = ["us-east-1a", "us-east-1b", "us-east-1c"]
+pri-cidr-block        = ["10.16.128.0/20", "10.16.144.0/20", "10.16.160.0/20"]
+pri-availability-zone = ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+# EKS Configuration
+cluster-version            = "1.31"
+cluster-name               = "eks-cluster"
+endpoint-private-access    = true
+endpoint-public-access     = true  # Set to true to allow bastion access
+ondemand_instance_types    = ["t3a.medium"]
+desired_capacity_on_demand = 1
+min_capacity_on_demand     = 1
+max_capacity_on_demand     = 5
+
+# Bastion/Jump Box Configuration
+enable_bastion        = true
+bastion_instance_type = "t3.micro"
+
+# Access Method: SSM only (recommended - no SSH key needed)
+bastion_enable_ssh = false  # Set to true if you want SSH access
+
+# SSH Configuration (only needed if bastion_enable_ssh = true)
+# bastion_key_name      = "my-key-pair"      # Your SSH key name in AWS
+# bastion_allowed_cidrs = ["1.2.3.4/32"]     # Your IP address
+
+# Note: Official module handles addons automatically with most_recent = true
+# No need to specify addon versions manually
