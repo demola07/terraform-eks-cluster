@@ -4,10 +4,10 @@
 
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.0"
+  version = "~> 21.10"
 
-  cluster_name    = var.cluster-name
-  cluster_version = var.cluster-version
+  name               = var.cluster-name
+  kubernetes_version = var.cluster-version
 
   # Networking
   vpc_id                   = module.vpc.vpc_id
@@ -15,30 +15,30 @@ module "eks" {
   control_plane_subnet_ids = module.vpc.private_subnets
 
   # Cluster access
-  cluster_endpoint_private_access = var.endpoint-private-access
-  cluster_endpoint_public_access  = var.endpoint-public-access
+  endpoint_private_access = var.endpoint-private-access
+  endpoint_public_access  = var.endpoint-public-access
 
   # Security: Allow public access from anywhere (bastion uses private endpoint)
   # Since bastion is in the VPC, it will use the private endpoint
-  cluster_endpoint_public_access_cidrs = var.endpoint-public-access ? ["0.0.0.0/0"] : []
-  
+  endpoint_public_access_cidrs = var.endpoint-public-access ? ["0.0.0.0/0"] : []
+
   # Additional security groups for cluster access
-  cluster_additional_security_group_ids = var.enable_bastion ? [aws_security_group.bastion.id] : []
+  additional_security_group_ids = var.enable_bastion ? [aws_security_group.bastion.id] : []
 
   # Enable cluster logging
-  cluster_enabled_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+  enabled_log_types = ["api", "audit", "authenticator"]
 
   # Modern authentication mode
   authentication_mode = "API_AND_CONFIG_MAP"
-  
+
   # Enable cluster creator admin permissions
   enable_cluster_creator_admin_permissions = true
-  
+
   # Access entries for bastion
   access_entries = var.enable_bastion ? {
     bastion = {
       principal_arn = aws_iam_role.bastion.arn
-      
+
       policy_associations = {
         admin = {
           policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
@@ -50,8 +50,8 @@ module "eks" {
     }
   } : {}
 
-  # Cluster addons - using most_recent for automatic version management
-  cluster_addons = {
+  # Cluster addons - v21.x format with before_compute support
+  addons = {
     coredns = {
       most_recent = true
     }
@@ -59,7 +59,8 @@ module "eks" {
       most_recent = true
     }
     vpc-cni = {
-      most_recent = true
+      most_recent    = true
+      before_compute = true  # Install before node groups
     }
     aws-ebs-csi-driver = {
       most_recent              = true

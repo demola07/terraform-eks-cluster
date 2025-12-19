@@ -1,331 +1,663 @@
-# Production EKS Cluster with Terraform
+# Production-Ready EKS Cluster on AWS
 
-Production-ready Amazon EKS cluster using official Terraform modules with secure bastion access.
+A Terraform-based infrastructure-as-code project for deploying a production-ready Amazon EKS (Elastic Kubernetes Service) cluster with secure bastion host access, high availability, and best practices for security and scalability.
 
-## 🎯 Features
+## 📋 Table of Contents
 
-- ✅ **High Availability**: Multi-AZ deployment with 3 NAT Gateways
-- ✅ **Secure Access**: Bastion host with SSM (no SSH keys needed)
-- ✅ **Auto-Managed Add-ons**: vpc-cni, CoreDNS, kube-proxy, EBS CSI driver
-- ✅ **Production Ready**: Encrypted volumes, cluster logging, IRSA enabled
-- ✅ **Official Modules**: Using terraform-aws-modules (battle-tested)
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Accessing the EKS Cluster](#accessing-the-eks-cluster)
+- [Project Structure](#project-structure)
+- [Configuration](#configuration)
+- [Security](#security)
+- [Maintenance](#maintenance)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## 🎯 Overview
+
+This project deploys a complete EKS infrastructure including:
+- **EKS Cluster** (v1.33) with managed node groups
+- **High-availability VPC** across 2 availability zones
+- **Secure bastion host** with SSM-only access (no SSH keys required)
+- **Essential cluster add-ons**: CoreDNS, VPC-CNI, kube-proxy, EBS CSI driver
+- **IAM roles with least privilege** using IRSA (IAM Roles for Service Accounts)
+- **Encrypted storage** and comprehensive logging
+
+**Module Version**: terraform-aws-modules/eks/aws v21.10.1
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         AWS Region (us-east-1)                  │
+│                                                                 │
+│  ┌───────────────────────────────────────────────────────────┐ │
+│  │                    VPC (10.16.0.0/16)                     │ │
+│  │                                                           │ │
+│  │  ┌─────────────────────┐    ┌─────────────────────┐     │ │
+│  │  │   AZ 1 (us-east-1a) │    │   AZ 2 (us-east-1b) │     │ │
+│  │  │                     │    │                     │     │ │
+│  │  │  Public Subnet      │    │  Public Subnet      │     │ │
+│  │  │  ┌──────────────┐   │    │  ┌──────────────┐   │     │ │
+│  │  │  │ NAT Gateway  │   │    │  │ NAT Gateway  │   │     │ │
+│  │  │  │ Bastion Host │   │    │  │              │   │     │ │
+│  │  │  └──────────────┘   │    │  └──────────────┘   │     │ │
+│  │  │                     │    │                     │     │ │
+│  │  │  Private Subnet     │    │  Private Subnet     │     │ │
+│  │  │  ┌──────────────┐   │    │  ┌──────────────┐   │     │ │
+│  │  │  │ EKS Worker   │   │    │  │ EKS Worker   │   │     │ │
+│  │  │  │ Nodes        │   │    │  │ Nodes        │   │     │ │
+│  │  │  └──────────────┘   │    │  └──────────────┘   │     │ │
+│  │  └─────────────────────┘    └─────────────────────┘     │ │
+│  │                                                           │ │
+│  │  ┌─────────────────────────────────────────────────────┐ │ │
+│  │  │           EKS Control Plane (Managed by AWS)        │ │ │
+│  │  └─────────────────────────────────────────────────────┘ │ │
+│  └───────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Access Flow**:
+```
+Your Laptop → AWS SSM → Bastion Host → EKS API → Worker Nodes → Pods
+```
+
+---
+
+## ✨ Features
+
+### Infrastructure
+- ✅ **EKS Cluster v1.33** with modern authentication (API_AND_CONFIG_MAP)
+- ✅ **High-availability VPC** with 2 AZs, 2 public subnets, 2 private subnets
+- ✅ **Dual NAT Gateways** for redundancy
+- ✅ **Managed node groups** with on-demand instances (t3.medium)
+- ✅ **Auto-scaling** support (min: 1, max: 3, desired: 1)
+
+### Security
+- ✅ **Bastion host** with SSM Session Manager (no SSH keys needed)
+- ✅ **IAM roles** with least privilege principle
+- ✅ **IRSA enabled** for pod-level AWS permissions
+- ✅ **Encrypted EBS volumes** for all nodes
+- ✅ **Private subnets** for worker nodes
+- ✅ **Security groups** with minimal required access
+- ✅ **Cluster logging** enabled (API, audit, authenticator)
+
+### Add-ons
+- ✅ **CoreDNS** - DNS resolution for services
+- ✅ **VPC-CNI** - Pod networking
+- ✅ **kube-proxy** - Network proxy
+- ✅ **EBS CSI Driver** - Persistent volume support
+
+### Tools (Pre-installed on Bastion)
+- ✅ **kubectl** - Kubernetes CLI
+- ✅ **helm** - Package manager for Kubernetes
+- ✅ **k9s** - Terminal UI for Kubernetes
+- ✅ **AWS CLI v2** - AWS command-line interface
+
+---
+
+## 📦 Prerequisites
+
+### Required Tools
+- **Terraform** >= 1.5.7
+- **AWS CLI** >= 2.0
+- **AWS Account** with appropriate permissions
+
+### AWS Provider Requirements
+- **AWS Provider** >= 6.23.0
+- **Time Provider** >= 0.9
+- **TLS Provider** >= 4.0
+
+### AWS Permissions
+Your IAM user/role needs permissions to create:
+- VPC, Subnets, Route Tables, Internet Gateway, NAT Gateway
+- EKS Cluster, Node Groups, Add-ons
+- EC2 Instances (bastion), Security Groups
+- IAM Roles, Policies, Instance Profiles
+- CloudWatch Log Groups
+- KMS Keys (for encryption)
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone and Configure
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd eks
+
+# Navigate to the deployment directory
+cd eks
+```
+
+### 2. Create Your Variables File
+
+```bash
+# Copy the example file
+cp dev-official.tfvars.example dev-official.tfvars
+
+# Edit with your values
+vim dev-official.tfvars
+```
+
+**Minimum required variables**:
+```hcl
+env                        = "dev"
+aws-region                 = "us-east-1"
+cluster-name               = "daas-eks"
+vpc-cidr-block             = "10.16.0.0/16"
+cluster-version            = "1.33"
+ondemand_instance_types    = ["t3.medium"]
+desired_capacity_on_demand = 1
+min_capacity_on_demand     = 1
+max_capacity_on_demand     = 3
+enable_bastion             = true
+bastion_instance_type      = "t3.micro"
+bastion_enable_ssh         = false
+```
+
+### 3. Deploy
+
+```bash
+# Initialize Terraform
+terraform init
+
+# Review the plan
+terraform plan -var-file=dev-official.tfvars
+
+# Deploy the infrastructure
+terraform apply -var-file=dev-official.tfvars
+```
+
+**Deployment time**: ~15-20 minutes
+
+### 4. Verify Deployment
+
+```bash
+# Get cluster information
+terraform output
+
+# Expected outputs:
+# - cluster_name
+# - cluster_endpoint
+# - bastion_instance_id
+# - bastion_ssm_command
+```
+
+---
+
+## 🔐 Accessing the EKS Cluster
+
+### Method 1: Via Bastion Host (Recommended)
+
+The bastion host is pre-configured with kubectl, helm, and k9s. Access is secured via AWS Systems Manager (SSM) - no SSH keys required.
+
+#### Step 1: Get Bastion Instance ID
+
+```bash
+# From your local machine
+cd /Users/ademolaadesina/projects/eks/eks
+
+# Get the instance ID
+BASTION_ID=$(terraform output -raw bastion_instance_id)
+echo $BASTION_ID
+```
+
+#### Step 2: Connect to Bastion via SSM
+
+```bash
+# Connect using AWS SSM Session Manager
+aws ssm start-session --target $BASTION_ID --region us-east-1
+
+# You should see a shell prompt like:
+# sh-5.2$
+```
+
+**Alternative**: Get the full command from Terraform output:
+```bash
+terraform output bastion_ssm_command
+# Copy and run the command shown
+```
+
+#### Step 3: Verify kubectl Access
+
+Once connected to the bastion:
+
+```bash
+# Check nodes
+kubectl get nodes
+
+# Expected output:
+# NAME                            STATUS   ROLES    AGE   VERSION
+# ip-10-16-139-137.ec2.internal   Ready    <none>   55m   v1.33.5-eks-113cf36
+
+# Check all pods
+kubectl get pods -A
+
+# Check cluster info
+kubectl cluster-info
+```
+
+#### Step 4: Use Pre-installed Tools
+
+```bash
+# Use kubectl (alias 'k' is available)
+k get pods -A
+
+# Launch K9s terminal UI
+k9s
+
+# Use helm
+helm list -A
+
+# Check AWS CLI
+aws eks describe-cluster --name dev-daas-eks --region us-east-1
+```
+
+### Method 2: From Your Local Machine
+
+If you want to access the cluster directly from your laptop:
+
+#### Step 1: Configure kubectl
+
+```bash
+# Update kubeconfig
+aws eks update-kubeconfig --region us-east-1 --name dev-daas-eks
+
+# Verify access
+kubectl get nodes
+```
+
+**Note**: This requires:
+- Your IAM user/role to have EKS access permissions
+- The cluster's public endpoint to be enabled (`endpoint-public-access = true`)
+- Your IP to be allowed in the cluster's public access CIDRs
+
+---
 
 ## 📁 Project Structure
 
 ```
 eks/
-├── module/                 
-│   ├── vpc.tf             # VPC with HA NAT gateways
-│   ├── eks-cluster.tf     # EKS cluster + add-ons
-│   ├── eks-node-groups.tf # Worker nodes
-│   ├── bastion.tf         # Jump box with SSM
-│   └── iam-irsa.tf        # IAM roles for service accounts
-├── eks/                   # Root configuration
-│   ├── main.tf            # Module invocation
-│   ├── backend.tf         # State backend
-│   ├── variables-official.tf
-│   └── dev-official.tfvars # Your configuration
-├── README.md              # This file
-└── QUICK-COMMANDS.md      # Command reference
+├── eks/                          # Root module (deployment)
+│   ├── main.tf                   # Main configuration
+│   ├── variables.tf              # Input variables
+│   ├── outputs.tf                # Output values
+│   ├── backend.tf                # Provider and backend config
+│   └── dev-official.tfvars       # Your environment variables (gitignored)
+│
+├── module/                       # EKS module (reusable)
+│   ├── eks-cluster.tf            # EKS cluster configuration
+│   ├── eks-node-groups.tf        # Node group definitions
+│   ├── vpc.tf                    # VPC and networking
+│   ├── bastion.tf                # Bastion host configuration
+│   ├── bastion-userdata.sh       # Bastion initialization script
+│   ├── bastion-outputs.tf        # Bastion outputs
+│   ├── iam-irsa.tf               # IRSA roles (EBS CSI, etc.)
+│   ├── outputs.tf                # Module outputs
+│   └── variables.tf              # Module variables
+│
+├── SECURITY-GUIDE.md             # Security architecture documentation
+├── QUICK-COMMANDS.md             # Quick reference commands
+└── README.md                     # This file
 ```
-
-## 🚀 Quick Start
-
-### 1. Prerequisites
-
-```bash
-# Install tools (macOS)
-brew install terraform awscli
-brew install --cask session-manager-plugin
-
-# Configure AWS
-aws configure
-# Enter: Access Key, Secret Key, Region (us-east-1)
-```
-
-### 2. Deploy
-
-```bash
-cd eks/
-terraform init
-terraform apply -var-file=dev-official.tfvars
-```
-
-### 3. Access Cluster
-
-```bash
-# Get bastion instance ID
-INSTANCE_ID=$(terraform output -raw bastion_instance_id)
-
-# Connect via SSM (no SSH key needed!)
-aws ssm start-session --target $INSTANCE_ID --region us-east-1
-
-# Use kubectl (pre-configured on bastion)
-kubectl get nodes
-kubectl get pods -A
-k9s  # Launch Kubernetes UI
-```
-
-## 📋 What Gets Created
-
-### Infrastructure
-
-**Networking:**
-- 1 VPC (10.16.0.0/16)
-- 6 Subnets (3 public, 3 private across 3 AZs)
-- 3 NAT Gateways (HA - one per AZ)
-- 1 Internet Gateway
-- Route tables and security groups
-
-**EKS Cluster:**
-- Kubernetes 1.31
-- Private + Public endpoints (public restricted to bastion IP)
-- All control plane logging enabled
-- IRSA (IAM Roles for Service Accounts) enabled
-
-**Add-ons (Auto-managed):**
-- vpc-cni (latest)
-- coredns (latest)
-- kube-proxy (latest)
-- aws-ebs-csi-driver (latest with IRSA)
-
-**Worker Nodes:**
-- On-demand node group: 1-5 nodes (t3a.medium)
-- Encrypted gp3 volumes (50GB)
-- Auto Scaling enabled
-
-**Bastion/Jump Box:**
-- t3.micro instance in public subnet
-- SSM access (default - no SSH keys)
-- Pre-installed: kubectl, helm, k9s, AWS CLI
-- Auto-configured for EKS cluster
-
-
-## 🔐 Security Features
-
-1. **Bastion Access Only**
-   - EKS API endpoint restricted to bastion IP only
-   - No direct internet access to cluster
-
-2. **SSM Instead of SSH**
-   - No SSH keys to manage
-   - No open port 22
-   - Full audit trail in CloudTrail
-   - Session logging available
-
-3. **Encrypted Everything**
-   - EBS volumes encrypted
-   - Secrets encryption (optional KMS)
-   - TLS for all communications
-
-4. **Private Worker Nodes**
-   - Nodes in private subnets
-   - Outbound internet via NAT gateways
-   - No public IPs on nodes
-
-5. **IRSA (IAM Roles for Service Accounts)**
-   - Pods can assume IAM roles
-   - No node-level permissions needed
-   - Least privilege access
-
-## ⚙️ Configuration
-
-### Default Configuration (dev-official.tfvars)
-
-```hcl
-# Environment
-env        = "dev"
-aws-region = "us-east-1"
-
-# Networking
-vpc-cidr-block        = "10.16.0.0/16"
-pub-cidr-block        = ["10.16.0.0/20", "10.16.16.0/20", "10.16.32.0/20"]
-pri-cidr-block        = ["10.16.128.0/20", "10.16.144.0/20", "10.16.160.0/20"]
-pub-availability-zone = ["us-east-1a", "us-east-1b", "us-east-1c"]
-pri-availability-zone = ["us-east-1a", "us-east-1b", "us-east-1c"]
-
-# EKS
-cluster-version         = "1.31"
-cluster-name            = "eks-cluster"
-endpoint-private-access = true
-endpoint-public-access  = true  # Restricted to bastion IP
-
-# Nodes
-ondemand_instance_types    = ["t3a.medium"]
-desired_capacity_on_demand = 1
-min_capacity_on_demand     = 1
-max_capacity_on_demand     = 5
-
-# Bastion (SSM only - no SSH key needed)
-enable_bastion     = true
-bastion_enable_ssh = false  # SSM only (more secure)
-```
-
-### Enable SSH Access (Optional)
-
-```hcl
-# In dev-official.tfvars
-bastion_enable_ssh    = true
-bastion_key_name      = "my-key-pair"      # Your AWS key name
-bastion_allowed_cidrs = ["1.2.3.4/32"]     # Your IP address
-```
-
-### Cost Optimization
-
-1. **Single NAT (dev only)**: Save ~$65/month
-   ```hcl
-   # In module-official/vpc.tf
-   single_nat_gateway = true
-   ```
-
-2. **Stop bastion when not in use**: Save ~$7/month
-   ```bash
-   aws ec2 stop-instances --instance-ids $INSTANCE_ID
-   ```
-
-3. **Use spot instances**: Save ~50% on compute
-4. **Smaller instance types**: t3a.small instead of medium
-
-## 🛠️ Common Tasks
-
-### Deploy Application
-
-```bash
-# Create deployment
-kubectl create deployment nginx --image=nginx
-
-# Expose via load balancer
-kubectl expose deployment nginx --port=80 --type=LoadBalancer
-
-# Get URL
-kubectl get svc nginx
-```
-
-### Install Helm Chart
-
-```bash
-# Add repo
-helm repo add bitnami https://charts.bitnami.com/bitnami
-
-# Install
-helm install my-app bitnami/nginx
-
-# List releases
-helm list -A
-```
-
-### Scale Deployment
-
-```bash
-kubectl scale deployment nginx --replicas=3
-```
-
-### View Logs
-
-```bash
-kubectl logs <pod-name>
-kubectl logs -f <pod-name>  # Follow
-```
-
-## 🔧 Troubleshooting
-
-### Can't connect to bastion via SSM
-
-```bash
-# Check SSM agent
-aws ssm describe-instance-information \
-  --filters "Key=InstanceIds,Values=$INSTANCE_ID"
-
-# Verify Session Manager plugin
-session-manager-plugin --version
-```
-
-### kubectl not working on bastion
-
-```bash
-# SSH/SSM into bastion
-aws ssm start-session --target $INSTANCE_ID
-
-# Update kubeconfig
-aws eks update-kubeconfig --region us-east-1 --name dev-daas-eks-cluster
-
-# Test
-kubectl get nodes
-```
-
-### Nodes not joining cluster
-
-```bash
-# Check node group
-aws eks describe-nodegroup \
-  --cluster-name dev-daas-eks-cluster \
-  --nodegroup-name dev-daas-eks-cluster-ondemand-nodes
-
-# Check Auto Scaling Group
-aws autoscaling describe-auto-scaling-groups \
-  --query 'AutoScalingGroups[?contains(Tags[?Key==`eks:cluster-name`].Value, `dev-daas-eks-cluster`)]'
-```
-
-## 🧹 Cleanup
-
-```bash
-# Destroy everything
-terraform destroy -var-file=dev-official.tfvars
-# Type 'yes' when prompted
-# ⏱️ Takes ~10-15 minutes
-```
-
-## 📚 Architecture
-
-### Network Flow
-
-```
-Internet
-    ↓
-Internet Gateway
-    ↓
-Public Subnets (3 AZs)
-    ├─ NAT Gateways (3)
-    └─ Bastion Host
-        ↓ (SSM/SSH)
-        ↓
-Private Subnets (3 AZs)
-    ├─ EKS Control Plane
-    └─ Worker Nodes
-        ↓ (via NAT)
-        ↓
-Internet (for pulling images, etc.)
-```
-
-### Access Flow
-
-```
-Your Computer
-    ↓ (AWS CLI + SSM)
-AWS Systems Manager
-    ↓ (Secure tunnel)
-Bastion Host
-    ↓ (kubectl - HTTPS to EKS API)
-EKS Cluster
-    ↓
-Worker Nodes
-```
-
-## 📖 Additional Resources
-
-- [Terraform AWS EKS Module](https://registry.terraform.io/modules/terraform-aws-modules/eks/aws)
-- [Terraform AWS VPC Module](https://registry.terraform.io/modules/terraform-aws-modules/vpc/aws)
-- [AWS EKS Best Practices](https://aws.github.io/aws-eks-best-practices/)
-- [Kubernetes Documentation](https://kubernetes.io/docs/)
-
-## 🤝 Contributing
-
-This is a personal project, but suggestions are welcome!
-
-## 📄 License
-
-MIT License - feel free to use for your own projects.
 
 ---
 
-**Ready to deploy?** See [QUICK-COMMANDS.md](./QUICK-COMMANDS.md) for command reference.
+## ⚙️ Configuration
+
+### Key Variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `cluster-name` | EKS cluster name | - | Yes |
+| `cluster-version` | Kubernetes version | `1.33` | Yes |
+| `vpc-cidr-block` | VPC CIDR range | `10.16.0.0/16` | Yes |
+| `ondemand_instance_types` | Instance types for nodes | `["t3.medium"]` | Yes |
+| `desired_capacity_on_demand` | Desired number of nodes | `1` | Yes |
+| `enable_bastion` | Enable bastion host | `true` | No |
+| `bastion_instance_type` | Bastion instance type | `t3.micro` | No |
+| `endpoint-public-access` | Enable public API endpoint | `true` | No |
+| `endpoint-private-access` | Enable private API endpoint | `true` | No |
+
+### Customizing Node Groups
+
+Edit `module/eks-node-groups.tf`:
+
+```hcl
+locals {
+  node_groups = {
+    ondemand = {
+      ami_type       = "AL2023_x86_64_STANDARD"
+      instance_types = ["t3.medium"]
+      capacity_type  = "ON_DEMAND"
+      
+      min_size     = 1
+      max_size     = 5      # Increase for more scaling
+      desired_size = 2      # Start with 2 nodes
+      
+      # Customize disk size
+      block_device_mappings = {
+        xvda = {
+          device_name = "/dev/xvda"
+          ebs = {
+            volume_size = 100  # Increase to 100GB
+            volume_type = "gp3"
+            encrypted   = true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Adding More IRSA Roles
+
+Edit `module/iam-irsa.tf` to add roles for other services:
+
+```hcl
+# Example: AWS Load Balancer Controller
+module "aws_lb_controller_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.0"
+
+  role_name = "${var.cluster-name}-aws-load-balancer-controller"
+  attach_load_balancer_controller_policy = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks.oidc_provider_arn
+      namespace_service_accounts = ["kube-system:aws-load-balancer-controller"]
+    }
+  }
+}
+```
+
+---
+
+## 🔒 Security
+
+### Network Security
+
+- **Private Subnets**: Worker nodes run in private subnets with no direct internet access
+- **NAT Gateways**: Outbound internet access via NAT gateways in public subnets
+- **Security Groups**: Minimal required access between components
+- **Bastion Access**: Only via SSM (port 443), no SSH port 22 exposed
+
+### IAM Security
+
+- **Cluster Creator Admin**: Automatically granted admin access via access entry
+- **Bastion Role**: Limited to EKS describe/access permissions
+- **Node Role**: Standard EKS worker node permissions
+- **IRSA**: Pod-level permissions (e.g., EBS CSI driver can only manage volumes)
+
+### Encryption
+
+- **EBS Volumes**: All node volumes encrypted with AWS-managed keys
+- **Secrets**: Kubernetes secrets encrypted at rest (optional KMS key)
+- **Logs**: CloudWatch logs encrypted
+
+### Access Control
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Layer 1: Network (Security Groups)                     │
+│   ✓ Bastion → EKS API (port 443)                       │
+│   ✓ Nodes → EKS API (port 443)                         │
+├─────────────────────────────────────────────────────────┤
+│ Layer 2: IAM Authentication                            │
+│   ✓ Bastion IAM role                                   │
+│   ✓ Your IAM user/role                                 │
+├─────────────────────────────────────────────────────────┤
+│ Layer 3: EKS Access Entries (Kubernetes RBAC)          │
+│   ✓ Cluster creator → Admin                            │
+│   ✓ Bastion role → Admin                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+**For detailed security architecture**, see [SECURITY-GUIDE.md](SECURITY-GUIDE.md)
+
+---
+
+## 🛠️ Maintenance
+
+### Updating the Cluster
+
+```bash
+# After modifying tfvars or module code
+terraform plan -var-file=dev-official.tfvars
+terraform apply -var-file=dev-official.tfvars
+```
+
+### Upgrading Kubernetes Version
+
+1. Update `cluster-version` in your tfvars:
+```hcl
+cluster-version = "1.34"  # New version
+```
+
+2. Apply the change:
+```bash
+terraform apply -var-file=dev-official.tfvars
+```
+
+3. Node groups will automatically update with rolling deployment
+
+### Scaling Node Groups
+
+**Via Terraform**:
+```hcl
+# In dev-official.tfvars
+desired_capacity_on_demand = 3
+min_capacity_on_demand     = 2
+max_capacity_on_demand     = 5
+```
+
+**Via AWS CLI**:
+```bash
+aws eks update-nodegroup-config \
+  --cluster-name dev-daas-eks \
+  --nodegroup-name dev-daas-eks-od \
+  --scaling-config minSize=2,maxSize=5,desiredSize=3
+```
+
+### Stopping/Starting Bastion (Cost Savings)
+
+```bash
+# Stop bastion when not in use
+aws ec2 stop-instances --instance-ids $BASTION_ID
+
+# Start when needed
+aws ec2 start-instances --instance-ids $BASTION_ID
+```
+
+### Viewing Logs
+
+```bash
+# Cluster logs (CloudWatch)
+aws logs tail /aws/eks/dev-daas-eks/cluster --follow
+
+# Bastion setup logs (from bastion)
+sudo cat /var/log/bastion-setup.log
+sudo cat /var/log/cloud-init-output.log
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Issue: Cannot connect to bastion via SSM
+
+**Symptoms**: `aws ssm start-session` fails
+
+**Solutions**:
+```bash
+# 1. Verify bastion is running
+aws ec2 describe-instances --instance-ids $BASTION_ID \
+  --query 'Reservations[0].Instances[0].State.Name'
+
+# 2. Check SSM agent status
+aws ssm describe-instance-information \
+  --filters "Key=InstanceIds,Values=$BASTION_ID"
+
+# 3. Verify IAM role is attached
+aws ec2 describe-instances --instance-ids $BASTION_ID \
+  --query 'Reservations[0].Instances[0].IamInstanceProfile'
+```
+
+### Issue: kubectl commands timeout from bastion
+
+**Symptoms**: `dial tcp 10.16.x.x:443: i/o timeout`
+
+**Solutions**:
+```bash
+# 1. Verify security group rules exist
+terraform plan -var-file=dev-official.tfvars
+# Look for bastion_to_cluster security group rule
+
+# 2. Check EKS endpoint configuration
+aws eks describe-cluster --name dev-daas-eks \
+  --query 'cluster.resourcesVpcConfig'
+
+# 3. Re-apply Terraform to fix security groups
+terraform apply -var-file=dev-official.tfvars
+```
+
+### Issue: kubectl authentication error
+
+**Symptoms**: `error: You must be logged in to the server`
+
+**Solutions**:
+```bash
+# From bastion, reconfigure kubeconfig
+aws eks update-kubeconfig --region us-east-1 --name dev-daas-eks
+
+# Verify IAM role has access entry
+aws eks list-access-entries --cluster-name dev-daas-eks
+```
+
+### Issue: Nodes not joining cluster
+
+**Symptoms**: No nodes shown in `kubectl get nodes`
+
+**Solutions**:
+```bash
+# 1. Check node group status
+aws eks describe-nodegroup \
+  --cluster-name dev-daas-eks \
+  --nodegroup-name dev-daas-eks-od
+
+# 2. Check Auto Scaling Group
+aws autoscaling describe-auto-scaling-groups \
+  --filters "Name=tag:Name,Values=dev-daas-eks-od"
+
+# 3. Check node IAM role
+aws iam get-role --role-name <node-role-name>
+```
+
+### Issue: Terraform state locked
+
+**Symptoms**: `Error acquiring the state lock`
+
+**Solutions**:
+```bash
+# Force unlock (use with caution)
+terraform force-unlock <lock-id>
+```
+
+### Common kubectl Commands for Debugging
+
+```bash
+# Check node status
+kubectl get nodes -o wide
+
+# Check pod status
+kubectl get pods -A -o wide
+
+# Describe problematic pod
+kubectl describe pod <pod-name> -n <namespace>
+
+# Check logs
+kubectl logs <pod-name> -n <namespace>
+
+# Check events
+kubectl get events -A --sort-by='.lastTimestamp'
+```
+
+---
+
+## 📊 Resource Summary
+
+After deployment, you'll have:
+
+| Resource Type | Count | Purpose |
+|---------------|-------|---------|
+| VPC | 1 | Network isolation |
+| Subnets | 4 | 2 public, 2 private |
+| NAT Gateways | 2 | High availability |
+| Internet Gateway | 1 | Public internet access |
+| EKS Cluster | 1 | Kubernetes control plane |
+| Node Groups | 1 | Worker nodes |
+| EC2 Instances | 1-3 | Worker nodes (auto-scaled) |
+| Bastion Host | 1 | Secure access point |
+| Security Groups | 3 | Network security |
+| IAM Roles | 4+ | Access control |
+| CloudWatch Log Groups | 1 | Cluster logging |
+
+**Estimated Monthly Cost** (us-east-1):
+- EKS Cluster: ~$73/month
+- EC2 Instances (1x t3.medium): ~$30/month
+- NAT Gateways (2x): ~$65/month
+- Bastion (t3.micro): ~$7.5/month
+- **Total**: ~$175-200/month
+
+---
+
+## 🤝 Contributing
+
+To modify this infrastructure:
+
+1. Make changes to the relevant `.tf` files
+2. Test with `terraform plan`
+3. Apply with `terraform apply`
+4. Update this README if adding new features
+5. Commit changes to version control
+
+---
+
+## 📚 Additional Documentation
+
+- **[SECURITY-GUIDE.md](SECURITY-GUIDE.md)** - Detailed security architecture, IAM roles, and network flow
+- **[QUICK-COMMANDS.md](QUICK-COMMANDS.md)** - Quick reference for common commands
+- **[Official EKS Module Docs](https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/21.10.1)** - Terraform module documentation
+- **[AWS EKS Documentation](https://docs.aws.amazon.com/eks/)** - AWS official documentation
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+---
+
+## 🆘 Support
+
+For issues or questions:
+1. Check the [Troubleshooting](#troubleshooting) section
+2. Review the [SECURITY-GUIDE.md](SECURITY-GUIDE.md)
+3. Check Terraform and AWS documentation
+4. Open an issue in the repository
+
+---
+
+**Built with ❤️ using Terraform and AWS EKS**

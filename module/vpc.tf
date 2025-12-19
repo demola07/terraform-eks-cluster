@@ -14,7 +14,7 @@ module "vpc" {
   public_subnets  = var.pub-cidr-block
 
   enable_nat_gateway   = true
-  single_nat_gateway   = false  # HA: One NAT per AZ for production
+  single_nat_gateway   = false # HA: One NAT per AZ for production
   enable_dns_hostnames = true
   enable_dns_support   = true
 
