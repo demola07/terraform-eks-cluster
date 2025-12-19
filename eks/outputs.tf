@@ -77,3 +77,17 @@ output "bastion_access_method" {
   description = "How to access the bastion"
   value       = try(module.eks.bastion_access_method, null)
 }
+
+################################################################################
+# IRSA Outputs
+################################################################################
+
+output "aws_load_balancer_controller_role_arn" {
+  description = "ARN of IAM role for AWS Load Balancer Controller"
+  value       = try(module.eks.aws_load_balancer_controller_role_arn, null)
+}
+
+output "ebs_csi_driver_role_arn" {
+  description = "ARN of IAM role for EBS CSI Driver"
+  value       = try(module.eks.ebs_csi_driver_role_arn, null)
+}
